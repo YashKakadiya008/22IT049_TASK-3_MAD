@@ -1,0 +1,122 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:taskflow_voice_todo/models/voice_command.dart';
+import 'package:taskflow_voice_todo/providers/voice_providers.dart';
+
+class VoiceCommandButton extends ConsumerWidget {
+  const VoiceCommandButton({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isListening = ref.watch(isListeningProvider);
+    final speechService = ref.watch(speechServiceProvider);
+    final ttsService = ref.watch(ttsServiceProvider);
+    final voiceCommandNotifier = ref.watch(voiceCommandNotifierProvider.notifier);
+    
+    return FloatingActionButton.extended(
+      onPressed: isListening ? null : () => _startListening(context, ref),
+      label: Text(isListening ? 'Listening...' : 'Voice Command'),
+      icon: Icon(isListening ? Icons.mic : Icons.mic_none),
+      backgroundColor: isListening ? Colors.red : Theme.of(context).primaryColor,
+    );
+  }
+  
+  Future<void> _startListening(BuildContext context, WidgetRef ref) async {
+    final speechService = ref.read(speechServiceProvider);
+    final ttsService = ref.read(ttsServiceProvider);
+    final voiceCommandNotifier = ref.read(voiceCommandNotifierProvider.notifier);
+    
+    // Initialize speech service if not already initialized
+    if (!speechService.isAvailable) {
+      final initialized = await speechService.initialize();
+      if (!initialized) {
+        await ttsService.speak('Sorry, speech recognition is not available on your device.');
+        return;
+      }
+    }
+    
+    // Set listening state to true
+    ref.read(isListeningProvider.notifier).state = true;
+    
+    // Start recording
+    await ttsService.speak('Listening for command');
+    
+    await speechService.startListening(
+      onResult: (text) async {
+        // Update speech result
+        ref.read(speechResultProvider.notifier).state = text;
+        
+        // Process the command
+        await voiceCommandNotifier.processCommand(text);
+      },
+      onComplete: () {
+        // Set listening state to false
+        ref.read(isListeningProvider.notifier).state = false;
+      },
+    );
+  }
+}
+
+class VoiceResultDisplay extends ConsumerWidget {
+  const VoiceResultDisplay({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final speechResult = ref.watch(speechResultProvider);
+    final voiceCommand = ref.watch(voiceCommandNotifierProvider);
+    
+    if (speechResult == null) {
+      return const SizedBox.shrink();
+    }
+    
+    return Card(
+      elevation: 4,
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Voice Command',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              speechResult,
+              style: const TextStyle(fontSize: 16),
+            ),
+            if (voiceCommand != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Detected Command: ${_getCommandTypeText(voiceCommand.type)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+  
+  String _getCommandTypeText(CommandType type) {
+    switch (type) {
+      case CommandType.addTask:
+        return 'Add Task';
+      case CommandType.completeTask:
+        return 'Complete Task';
+      case CommandType.deleteTask:
+        return 'Delete Task';
+      case CommandType.updateTask:
+        return 'Update Task';
+      case CommandType.queryTasks:
+        return 'Query Tasks';
+      case CommandType.unknown:
+        return 'Unknown Command';
+    }
+  }
+} 
