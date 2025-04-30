@@ -28,9 +28,12 @@ class VoiceCommandButton extends ConsumerWidget {
         final initialized = await speechService.initialize();
         if (!initialized) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Speech recognition not available')),
+            const SnackBar(content: Text('Speech recognition not available - using manual entry')),
           );
           await ttsService.speak('Sorry, speech recognition is not available on your device.');
+          
+          // Only create a fallback task if speech recognition fails
+          await _processManualTask(ref, context);
           return;
         }
       }
@@ -43,9 +46,6 @@ class VoiceCommandButton extends ConsumerWidget {
         const SnackBar(content: Text('Listening for command...')),
       );
       await ttsService.speak('Listening for command');
-      
-      // Create a test task
-      await _processManualTask(ref, context);
       
       // Start listening for speech
       await speechService.startListening(
@@ -72,10 +72,13 @@ class VoiceCommandButton extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error with speech recognition: $e')),
       );
+      
+      // Only create a fallback task if speech recognition fails
+      await _processManualTask(ref, context);
     }
   }
   
-  // As a fallback, create a test task when voice button is pressed
+  // Only use this as a fallback when voice recognition is unavailable
   Future<void> _processManualTask(WidgetRef ref, BuildContext context) async {
     final voiceCommandNotifier = ref.read(voiceCommandNotifierProvider.notifier);
     
@@ -84,7 +87,7 @@ class VoiceCommandButton extends ConsumerWidget {
     await voiceCommandNotifier.processCommand(testCommand);
     
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Created test task as fallback')),
+      const SnackBar(content: Text('Created test task as fallback (voice recognition unavailable)')),
     );
   }
 }
