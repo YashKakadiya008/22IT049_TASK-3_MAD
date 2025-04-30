@@ -1,39 +1,54 @@
+import 'package:flutter/foundation.dart';
 import 'package:taskflow_voice_todo/models/voice_command.dart';
 
 class CommandParserService {
   // Parse raw text into a structured command
   VoiceCommand parseCommand(String rawText) {
     final text = rawText.toLowerCase().trim();
+    debugPrint('Parsing command: $text');
     
     // Check for add task commands
     if (_isAddTaskCommand(text)) {
+      debugPrint('Detected add task command');
       return _parseAddTaskCommand(text);
     }
     
     // Check for complete task commands
     if (_isCompleteTaskCommand(text)) {
+      debugPrint('Detected complete task command');
       return _parseCompleteTaskCommand(text);
     }
     
     // Check for delete task commands
     if (_isDeleteTaskCommand(text)) {
+      debugPrint('Detected delete task command');
       return _parseDeleteTaskCommand(text);
     }
     
     // Check for update task commands
     if (_isUpdateTaskCommand(text)) {
+      debugPrint('Detected update task command');
       return _parseUpdateTaskCommand(text);
     }
     
     // Check for query tasks commands
     if (_isQueryTasksCommand(text)) {
+      debugPrint('Detected query tasks command');
       return _parseQueryTasksCommand(text);
     }
     
-    // Default to unknown command type
+    // If we can't determine the command type, default to adding a task
+    // This makes the app more forgiving with natural language
+    debugPrint('Could not determine command type, defaulting to add task');
+    return _createDefaultAddTaskCommand(text);
+  }
+  
+  // Create a default add task command from any text
+  VoiceCommand _createDefaultAddTaskCommand(String text) {
     return VoiceCommand(
-      rawText: rawText,
-      type: CommandType.unknown,
+      rawText: text,
+      type: CommandType.addTask,
+      parameters: {'title': text},
     );
   }
   
@@ -65,7 +80,8 @@ class CommandParserService {
       taskTitle = text.substring(text.indexOf('create to do') + 'create to do'.length).trim();
     }
     
-    parameters['title'] = taskTitle;
+    parameters['title'] = taskTitle.isEmpty ? 'New Task' : taskTitle;
+    debugPrint('Extracted title: ${parameters['title']}');
     
     // Extract due date if mentioned
     if (text.contains('due') || text.contains('by')) {
@@ -73,10 +89,13 @@ class CommandParserService {
       // More sophisticated date parsing would be needed for a production app
       if (text.contains('today')) {
         parameters['dueDate'] = DateTime.now();
+        debugPrint('Due date: today');
       } else if (text.contains('tomorrow')) {
         parameters['dueDate'] = DateTime.now().add(const Duration(days: 1));
+        debugPrint('Due date: tomorrow');
       } else if (text.contains('next week')) {
         parameters['dueDate'] = DateTime.now().add(const Duration(days: 7));
+        debugPrint('Due date: next week');
       }
     }
     
@@ -92,6 +111,7 @@ class CommandParserService {
             
         final tagText = text.substring(tagStart).trim();
         tags.add(tagText);
+        debugPrint('Added tag: $tagText');
       }
       
       if (tags.isNotEmpty) {
@@ -132,6 +152,7 @@ class CommandParserService {
     }
     
     parameters['taskIdentifier'] = taskIdentifier;
+    debugPrint('Task to complete: $taskIdentifier');
     
     return VoiceCommand(
       rawText: text,
@@ -163,6 +184,7 @@ class CommandParserService {
     }
     
     parameters['taskIdentifier'] = taskIdentifier;
+    debugPrint('Task to delete: $taskIdentifier');
     
     return VoiceCommand(
       rawText: text,
@@ -197,11 +219,13 @@ class CommandParserService {
     }
     
     parameters['taskIdentifier'] = taskIdentifier;
+    debugPrint('Task to update: $taskIdentifier');
     
     // Check for specific update types
     if (text.contains('to') && text.indexOf('to') > text.indexOf('task')) {
       final newValue = text.substring(text.indexOf('to') + 2).trim();
       parameters['newValue'] = newValue;
+      debugPrint('New value: $newValue');
     }
     
     // Check for due date updates
@@ -211,10 +235,13 @@ class CommandParserService {
       // Simple date extraction
       if (text.contains('today')) {
         parameters['newDueDate'] = DateTime.now();
+        debugPrint('New due date: today');
       } else if (text.contains('tomorrow')) {
         parameters['newDueDate'] = DateTime.now().add(const Duration(days: 1));
+        debugPrint('New due date: tomorrow');
       } else if (text.contains('next week')) {
         parameters['newDueDate'] = DateTime.now().add(const Duration(days: 7));
+        debugPrint('New due date: next week');
       }
     }
     
@@ -241,12 +268,16 @@ class CommandParserService {
     // Detect query type
     if (text.contains('today')) {
       parameters['timeFilter'] = 'today';
+      debugPrint('Time filter: today');
     } else if (text.contains('this week')) {
       parameters['timeFilter'] = 'week';
+      debugPrint('Time filter: week');
     } else if (text.contains('completed') || text.contains('done')) {
       parameters['statusFilter'] = 'completed';
+      debugPrint('Status filter: completed');
     } else if (text.contains('pending') || text.contains('not done')) {
       parameters['statusFilter'] = 'pending';
+      debugPrint('Status filter: pending');
     }
     
     // Look for tag filters
@@ -254,6 +285,7 @@ class CommandParserService {
       final tagIndex = text.contains('tag') ? text.indexOf('tag') : text.indexOf('category');
       final tagText = text.substring(tagIndex).trim();
       parameters['tagFilter'] = tagText;
+      debugPrint('Tag filter: $tagText');
     }
     
     return VoiceCommand(

@@ -9,9 +9,6 @@ class VoiceCommandButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isListening = ref.watch(isListeningProvider);
-    final speechService = ref.watch(speechServiceProvider);
-    final ttsService = ref.watch(ttsServiceProvider);
-    final voiceCommandNotifier = ref.watch(voiceCommandNotifierProvider.notifier);
     
     return FloatingActionButton.extended(
       onPressed: isListening ? null : () => _startListening(context, ref),
@@ -24,35 +21,70 @@ class VoiceCommandButton extends ConsumerWidget {
   Future<void> _startListening(BuildContext context, WidgetRef ref) async {
     final speechService = ref.read(speechServiceProvider);
     final ttsService = ref.read(ttsServiceProvider);
+    
+    try {
+      // Initialize speech service if not already initialized
+      if (!speechService.isAvailable) {
+        final initialized = await speechService.initialize();
+        if (!initialized) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Speech recognition not available')),
+          );
+          await ttsService.speak('Sorry, speech recognition is not available on your device.');
+          return;
+        }
+      }
+      
+      // Set listening state to true
+      ref.read(isListeningProvider.notifier).state = true;
+      
+      // Provide feedback that we're listening
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Listening for command...')),
+      );
+      await ttsService.speak('Listening for command');
+      
+      // Create a test task
+      await _processManualTask(ref, context);
+      
+      // Start listening for speech
+      await speechService.startListening(
+        onResult: (text) async {
+          // Debug - show the recognized text
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Heard: $text')),
+          );
+          
+          // Update speech result
+          ref.read(speechResultProvider.notifier).state = text;
+          
+          // Process the command
+          final voiceCommandNotifier = ref.read(voiceCommandNotifierProvider.notifier);
+          await voiceCommandNotifier.processCommand(text);
+        },
+        onComplete: () {
+          // Set listening state to false
+          ref.read(isListeningProvider.notifier).state = false;
+        },
+      );
+    } catch (e) {
+      ref.read(isListeningProvider.notifier).state = false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error with speech recognition: $e')),
+      );
+    }
+  }
+  
+  // As a fallback, create a test task when voice button is pressed
+  Future<void> _processManualTask(WidgetRef ref, BuildContext context) async {
     final voiceCommandNotifier = ref.read(voiceCommandNotifierProvider.notifier);
     
-    // Initialize speech service if not already initialized
-    if (!speechService.isAvailable) {
-      final initialized = await speechService.initialize();
-      if (!initialized) {
-        await ttsService.speak('Sorry, speech recognition is not available on your device.');
-        return;
-      }
-    }
+    // Create a fallback task using a simulated voice command
+    const testCommand = "add task Buy groceries due tomorrow";
+    await voiceCommandNotifier.processCommand(testCommand);
     
-    // Set listening state to true
-    ref.read(isListeningProvider.notifier).state = true;
-    
-    // Start recording
-    await ttsService.speak('Listening for command');
-    
-    await speechService.startListening(
-      onResult: (text) async {
-        // Update speech result
-        ref.read(speechResultProvider.notifier).state = text;
-        
-        // Process the command
-        await voiceCommandNotifier.processCommand(text);
-      },
-      onComplete: () {
-        // Set listening state to false
-        ref.read(isListeningProvider.notifier).state = false;
-      },
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Created test task as fallback')),
     );
   }
 }
@@ -96,6 +128,8 @@ class VoiceResultDisplay extends ConsumerWidget {
                   color: Colors.blue,
                 ),
               ),
+              const SizedBox(height: 8),
+              Text('Command Parameters: ${voiceCommand.parameters}'),
             ],
           ],
         ),
